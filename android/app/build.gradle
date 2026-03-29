@@ -1,0 +1,74 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+    // google-services plugin REMOVED — Supabase does not need it
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader("UTF-8") { reader ->
+        localProperties.load(reader)
+    }
+}
+
+// ── Load secrets.properties for API keys ────────────────────
+// This keeps real keys out of version-controlled files.
+def secretsProperties = new Properties()
+def secretsFile = file("secrets.properties")
+if (secretsFile.exists()) {
+    secretsFile.withReader("UTF-8") { reader ->
+        secretsProperties.load(reader)
+    }
+}
+
+def flutterVersionCode = localProperties.getProperty("flutter.versionCode")
+if (flutterVersionCode == null) {
+    flutterVersionCode = "1"
+}
+
+def flutterVersionName = localProperties.getProperty("flutter.versionName")
+if (flutterVersionName == null) {
+    flutterVersionName = "1.0"
+}
+
+android {
+    namespace = "com.fortrun.fortrun"
+    compileSdk = 34
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        applicationId = "com.fortrun.fortrun"
+        minSdk = 23
+        targetSdk = 34
+        versionCode = flutterVersionCode.toInteger()
+        versionName = flutterVersionName
+        multiDexEnabled true
+
+        // Inject Google Maps API key from secrets.properties into AndroidManifest.xml
+        // The manifest uses ${GOOGLE_MAPS_API_KEY} which Gradle replaces at build time.
+        manifestPlaceholders += [
+            GOOGLE_MAPS_API_KEY: secretsProperties.getProperty("GOOGLE_MAPS_API_KEY", "MISSING_KEY")
+        ]
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
