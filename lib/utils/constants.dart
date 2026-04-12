@@ -17,6 +17,14 @@ class AppConstants {
   static const int sabotagePointsMax = 100;    // Sabotage max deduction
   static const int maxClanMembers = 10;
 
+  // ── Streak Rules ───────────────────────────────────────────
+  static const double streakMultiplier2Day = 1.5;
+  static const double streakMultiplier7Day = 2.0;
+
+  // ── Sabotage Cooldown ──────────────────────────────────────
+  static const Duration sabotageCooldown = Duration(hours: 4);
+  static const double sabotageProximityMeters = 200.0;
+
   // ── Islamabad Center (for initial map camera) ──────────────
   static const LatLng islamabadCenter = LatLng(33.6844, 73.0479);
   static const double defaultZoom = 12.5;

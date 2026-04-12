@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'home_map_screen.dart';
 import 'profile_screen.dart';
 import 'leaderboard_screen.dart';
+import 'clan_screen.dart';
 import '../utils/theme.dart';
 
 /// ============================================================
-/// HomeShell — Bottom navigation shell with 3 tabs:
-///   1. Map (Home)
+/// HomeShell — Bottom navigation shell with 4 tabs:
+///   1. Map (Territory)
 ///   2. Leaderboard
-///   3. Profile
+///   3. Clan
+///   4. Profile
 /// ============================================================
 
 class HomeShell extends StatefulWidget {
@@ -24,6 +26,7 @@ class _HomeShellState extends State<HomeShell> {
   final List<Widget> _screens = const [
     HomeMapScreen(),
     LeaderboardScreen(),
+    ClanScreen(),
     ProfileScreen(),
   ];
 
@@ -39,7 +42,7 @@ class _HomeShellState extends State<HomeShell> {
           color: FortRunTheme.cardDark,
           boxShadow: [
             BoxShadow(
-              color: FortRunTheme.primaryGreen.withOpacity(0.1),
+              color: FortRunTheme.primaryGreen.withAlpha(25),
               blurRadius: 20,
               offset: const Offset(0, -4),
             ),
@@ -58,6 +61,11 @@ class _HomeShellState extends State<HomeShell> {
               icon: Icon(Icons.leaderboard_outlined),
               activeIcon: Icon(Icons.leaderboard),
               label: 'Leaderboard',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.shield_outlined),
+              activeIcon: Icon(Icons.shield),
+              label: 'Clan',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),

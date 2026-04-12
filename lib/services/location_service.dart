@@ -8,7 +8,7 @@ import '../services/database_service.dart';
 
 /// ============================================================
 /// LocationService — GPS tracking, polyline recording,
-/// and zone detection via point-in-polygon algorithm.
+/// zone detection, and distance utilities.
 /// ============================================================
 
 class LocationService extends ChangeNotifier {
@@ -21,6 +21,7 @@ class LocationService extends ChangeNotifier {
   Timer? _timer;
   StreamSubscription<Position>? _positionSubscription;
   List<ZoneModel> _activeZones = [];
+  String? _permissionError;
 
   // ── Public Getters ────────────────────────────────────────
   Position? get currentPosition => _currentPosition;
@@ -28,6 +29,7 @@ class LocationService extends ChangeNotifier {
   List<LatLng> get routePoints => List.unmodifiable(_routePoints);
   double get totalDistanceKm => _totalDistanceKm;
   int get elapsedSeconds => _elapsedSeconds;
+  String? get permissionError => _permissionError;
 
   String get formattedPace {
     if (_totalDistanceKm <= 0) return '--:--';
@@ -50,20 +52,34 @@ class LocationService extends ChangeNotifier {
   // ── Permissions ───────────────────────────────────────────
 
   Future<bool> requestPermission() async {
+    _permissionError = null;
+
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return false;
+    if (!serviceEnabled) {
+      _permissionError = 'Location services are disabled. Please enable GPS.';
+      notifyListeners();
+      return false;
+    }
 
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return false;
+      if (permission == LocationPermission.denied) {
+        _permissionError = 'Location permission denied. FortRun needs GPS to track runs.';
+        notifyListeners();
+        return false;
+      }
     }
-    if (permission == LocationPermission.deniedForever) return false;
+    if (permission == LocationPermission.deniedForever) {
+      _permissionError = 'Location permission permanently denied. Please enable it in Settings.';
+      notifyListeners();
+      return false;
+    }
     return true;
   }
 
   // ── Sync Active Zones ─────────────────────────────────────
-  
+
   void updateActiveZones(List<ZoneModel> zones) {
     _activeZones = zones;
     notifyListeners();
@@ -75,11 +91,17 @@ class LocationService extends ChangeNotifier {
     bool hasPermission = await requestPermission();
     if (!hasPermission) return null;
 
-    _currentPosition = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-    notifyListeners();
-    return _currentPosition;
+    try {
+      _currentPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      notifyListeners();
+      return _currentPosition;
+    } catch (e) {
+      _permissionError = 'Failed to get location: $e';
+      notifyListeners();
+      return null;
+    }
   }
 
   // ── Start/Stop Run Tracking ───────────────────────────────
@@ -101,21 +123,20 @@ class LocationService extends ChangeNotifier {
     // Start stopwatch timer & wall tick processor (every 5 seconds)
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       _elapsedSeconds++;
-      
-      // Ping database every 5 seconds to process wall damage/building!
+
       if (_elapsedSeconds % 5 == 0 && _currentPosition != null) {
         String? activeSector = detectZone(_currentPosition!.latitude, _currentPosition!.longitude);
         if (activeSector != null) {
           String wallId = getWallId(_currentPosition!.latitude, _currentPosition!.longitude);
           Map<String, dynamic> poly = getWallPolygonJson(_currentPosition!.latitude, _currentPosition!.longitude);
-          
+
           dbService.processWallTick(
             wallId: wallId,
             sectorId: activeSector,
             userId: uid,
             clanId: cid,
             polygonJson: poly,
-            tickAmount: 5, // 5 seconds of active effort
+            tickAmount: 5,
           );
         }
       }
@@ -126,7 +147,7 @@ class LocationService extends ChangeNotifier {
     // Subscribe to position stream
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 5, // Update every 5 meters
+      distanceFilter: 5,
     );
 
     _positionSubscription = Geolocator.getPositionStream(
@@ -157,7 +178,6 @@ class LocationService extends ChangeNotifier {
     _positionSubscription = null;
     notifyListeners();
 
-    // Determine primary sector of the run
     String primarySector = detectPrimarySector();
 
     return {
@@ -172,14 +192,12 @@ class LocationService extends ChangeNotifier {
 
   // ── Zone Detection ────────────────────────────────────────
 
-  /// Determines which Islamabad sector a single point is in based on dynamic DB boundaries.
-  /// Returns null if outside all known zones.
   String? detectZone(double lat, double lng) {
     if (_activeZones.isEmpty) return null;
 
     for (var zone in _activeZones) {
       if (zone.polygonCoords.isEmpty) continue;
-      
+
       List<LatLng> polygon = zone.polygonCoords
           .map((e) => LatLng(e['lat']!, e['lng']!))
           .toList();
@@ -192,11 +210,7 @@ class LocationService extends ChangeNotifier {
   }
 
   // ── Mathematical Grid Micro-Tiles (200m x 200m) ─────────────
-  
-  // 0.0018 degrees is roughly 200 meters.
-  // We floor the coordinates to step them into a massive mathematical grid covering the planet.
-  
-  /// Gets the unique wall hash string based on mathematical coordinates.
+
   String getWallId(double lat, double lng) {
     double gridSize = 0.0018;
     int latIndex = (lat / gridSize).floor();
@@ -204,7 +218,6 @@ class LocationService extends ChangeNotifier {
     return 'grid_${latIndex}_$lngIndex';
   }
 
-  /// Calculates the 4 exact DB-storable points of the mathematical box based on user coords.
   Map<String, dynamic> getWallPolygonJson(double lat, double lng) {
     double gridSize = 0.0018;
     double baseLat = (lat / gridSize).floor() * gridSize;
@@ -212,16 +225,14 @@ class LocationService extends ChangeNotifier {
 
     return {
       "points": [
-        {"lat": baseLat + gridSize, "lng": baseLng},            // NW
-        {"lat": baseLat + gridSize, "lng": baseLng + gridSize}, // NE
-        {"lat": baseLat, "lng": baseLng + gridSize},            // SE
-        {"lat": baseLat, "lng": baseLng}                        // SW
+        {"lat": baseLat + gridSize, "lng": baseLng},
+        {"lat": baseLat + gridSize, "lng": baseLng + gridSize},
+        {"lat": baseLat, "lng": baseLng + gridSize},
+        {"lat": baseLat, "lng": baseLng}
       ]
     };
   }
 
-  /// Determines the primary sector of the entire run
-  /// by counting which zone has the most route points.
   String detectPrimarySector() {
     Map<String, int> zoneCounts = {};
     for (var point in _routePoints) {
@@ -237,10 +248,16 @@ class LocationService extends ChangeNotifier {
         .key;
   }
 
-  /// Returns the sector the user is currently standing in.
   String? get currentZone {
     if (_currentPosition == null) return null;
     return detectZone(_currentPosition!.latitude, _currentPosition!.longitude);
+  }
+
+  // ── Distance Utilities ────────────────────────────────────
+
+  /// Calculate distance between two points in meters.
+  double distanceToPointMeters(double lat1, double lng1, double lat2, double lng2) {
+    return _calculateDistance(lat1, lng1, lat2, lng2) * 1000;
   }
 
   // ── Point-in-Polygon (Ray Casting Algorithm) ──────────────
@@ -270,7 +287,7 @@ class LocationService extends ChangeNotifier {
 
   double _calculateDistance(
       double lat1, double lon1, double lat2, double lon2) {
-    const double R = 6371; // Earth radius in km
+    const double R = 6371;
     double dLat = _degToRad(lat2 - lat1);
     double dLon = _degToRad(lon2 - lon1);
     double a = sin(dLat / 2) * sin(dLat / 2) +

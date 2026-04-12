@@ -13,10 +13,12 @@ import '../models/wall_model.dart';
 import '../utils/constants.dart';
 import '../utils/theme.dart';
 import 'sabotage_screen.dart';
+import 'run_summary_screen.dart';
+import 'activity_feed_screen.dart';
 
 /// ============================================================
 /// HomeMapScreen — Interactive Google Map with territory polygons,
-/// run tracking HUD, and sabotage trigger.
+/// run tracking HUD, sabotage trigger, and activity feed access.
 /// ============================================================
 
 class HomeMapScreen extends StatefulWidget {
@@ -33,11 +35,10 @@ class _HomeMapScreenState extends State<HomeMapScreen>
   final Set<Polyline> _polylines = {};
   List<ZoneModel> _zones = [];
   StreamSubscription? _zoneSubscription;
-  
+
   List<WallModel> _walls = [];
   StreamSubscription? _wallSubscription;
 
-  // Map style for dark mode (simplified)
   static const String _darkMapStyle = '''
   [
     {"elementType":"geometry","stylers":[{"color":"#212121"}]},
@@ -63,6 +64,19 @@ class _HomeMapScreenState extends State<HomeMapScreen>
   void _initLocation() async {
     final locService = context.read<LocationService>();
     await locService.getCurrentPosition();
+    if (locService.permissionError != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(locService.permissionError!),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'RETRY',
+            textColor: FortRunTheme.primaryGreen,
+            onPressed: _initLocation,
+          ),
+        ),
+      );
+    }
   }
 
   void _listenToZones() {
@@ -93,7 +107,7 @@ class _HomeMapScreenState extends State<HomeMapScreen>
     final authService = context.read<AuthService>();
     final currentUid = authService.currentUser?.id;
 
-    // 1. Draw Macro Sectors as hollow glowing borders
+    // 1. Draw Macro Sectors
     for (var zone in _zones) {
       String sectorId = zone.id;
       if (zone.polygonCoords.isEmpty) continue;
@@ -102,27 +116,32 @@ class _HomeMapScreenState extends State<HomeMapScreen>
           .map((e) => LatLng(e['lat']!, e['lng']!))
           .toList();
 
+      Color fillColor;
       Color strokeColor;
+
       if (zone.ownerId == null) {
-        strokeColor = Colors.grey.withOpacity(0.5); // Neutral stroke
+        fillColor = Colors.cyanAccent.withAlpha(8);
+        strokeColor = Colors.white.withAlpha(89);
       } else if (zone.ownerId == currentUid) {
-        strokeColor = FortRunTheme.primaryGreen;
+        fillColor = FortRunTheme.primaryGreen.withAlpha(38);
+        strokeColor = FortRunTheme.primaryGreen.withAlpha(153);
       } else {
-        strokeColor = FortRunTheme.enemyRed;
+        fillColor = FortRunTheme.enemyRed.withAlpha(30);
+        strokeColor = FortRunTheme.enemyRed.withAlpha(153);
       }
 
       _polygons.add(Polygon(
         polygonId: PolygonId(sectorId),
         points: points,
-        fillColor: Colors.transparent, // Hollow!
+        fillColor: fillColor,
         strokeColor: strokeColor,
-        strokeWidth: 3,
+        strokeWidth: 2,
         consumeTapEvents: true,
         onTap: () => _showZoneInfo(sectorId, zone),
       ));
     }
 
-    // 2. Draw Micro Walls as filled, opacity-mapped glowing boxes
+    // 2. Draw Micro Walls
     for (var wall in _walls) {
       if (wall.polygonCoords.isEmpty || wall.strength <= 0) continue;
 
@@ -132,13 +151,13 @@ class _HomeMapScreenState extends State<HomeMapScreen>
 
       Color fillColor;
       Color strokeColor;
-      double opacity = (wall.strength / 100).clamp(0.1, 0.8);
+      int alpha = ((wall.strength / 100) * 204).clamp(25, 204).round();
 
       if (wall.ownerId == currentUid) {
-        fillColor = FortRunTheme.primaryGreen.withOpacity(opacity);
+        fillColor = FortRunTheme.primaryGreen.withAlpha(alpha);
         strokeColor = FortRunTheme.primaryGreen;
       } else {
-        fillColor = FortRunTheme.enemyRed.withOpacity(opacity);
+        fillColor = FortRunTheme.enemyRed.withAlpha(alpha);
         strokeColor = FortRunTheme.enemyRed;
       }
 
@@ -167,10 +186,16 @@ class _HomeMapScreenState extends State<HomeMapScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Active Grid Wall', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text('Active Grid Wall',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
-              _zoneInfoRow(Icons.health_and_safety, 'Wall Strength', '${wall.strength}%'),
-              _zoneInfoRow(Icons.person, 'Owner ID', wall.ownerId ?? 'Unknown'),
+              _zoneInfoRow(
+                  Icons.health_and_safety, 'Wall Strength', '${wall.strength}%'),
+              _zoneInfoRow(
+                  Icons.person, 'Owner ID', wall.ownerId ?? 'Unknown'),
               _zoneInfoRow(Icons.map, 'Inside Sector', wall.sectorId),
             ],
           ),
@@ -197,7 +222,6 @@ class _HomeMapScreenState extends State<HomeMapScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Drag handle
               Center(
                 child: Container(
                   width: 40,
@@ -214,10 +238,11 @@ class _HomeMapScreenState extends State<HomeMapScreen>
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: FortRunTheme.primaryGreen.withOpacity(0.15),
+                      color: FortRunTheme.primaryGreen.withAlpha(38),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.flag, color: FortRunTheme.primaryGreen),
+                    child: const Icon(Icons.flag,
+                        color: FortRunTheme.primaryGreen),
                   ),
                   const SizedBox(width: 14),
                   Text(
@@ -250,31 +275,40 @@ class _HomeMapScreenState extends State<HomeMapScreen>
           Icon(icon, size: 18, color: FortRunTheme.textMuted),
           const SizedBox(width: 10),
           Text(label,
-              style: const TextStyle(color: FortRunTheme.textSecondary, fontSize: 14)),
+              style: const TextStyle(
+                  color: FortRunTheme.textSecondary, fontSize: 14)),
           const Spacer(),
           Text(value,
               style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14)),
         ],
       ),
     );
   }
-
-  // ── Run Tracking ──────────────────────────────────────────
 
   Future<void> _startRun() async {
     final locService = context.read<LocationService>();
     final dbService = context.read<DatabaseService>();
     final authService = context.read<AuthService>();
     final uid = authService.currentUser?.id;
-    final cid = authService.currentUser?.clanId;
 
     if (uid != null) {
+      final userProfile = await dbService.getUser(uid);
+      final cid = userProfile?.clanId;
+
       await locService.startTracking(
         dbService: dbService,
         uid: uid,
         cid: cid,
       );
+
+      if (locService.permissionError != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(locService.permissionError!)),
+        );
+      }
     }
   }
 
@@ -286,6 +320,7 @@ class _HomeMapScreenState extends State<HomeMapScreen>
     final uid = authService.currentUser?.id;
     if (uid == null) return;
 
+    final routeSnapshot = List<LatLng>.from(locService.routePoints);
     final result = await locService.stopTracking();
 
     // Save run to Supabase
@@ -296,73 +331,41 @@ class _HomeMapScreenState extends State<HomeMapScreen>
       distanceKm: result['distanceKm'],
       durationSeconds: result['durationSeconds'],
       primarySector: result['primarySector'],
-      pointsEarned: 0, // will be updated by game engine
+      pointsEarned: 0,
       polylineCoords: List<Map<String, double>>.from(
-        (result['polylineCoords'] as List).map((e) => Map<String, double>.from(e)),
+        (result['polylineCoords'] as List)
+            .map((e) => Map<String, double>.from(e)),
       ),
     );
-    await dbService.saveRun(run);
 
-    // Process points
-    int earned = await gameEngine.processRunPoints(
+    try {
+      await dbService.saveRun(run);
+    } catch (_) {}
+
+    // Process points with streak
+    final gameResult = await gameEngine.processRunPoints(
       runnerId: uid,
       sector: result['primarySector'],
       distKm: result['distanceKm'],
+      dbService: dbService,
     );
 
     if (mounted) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: FortRunTheme.cardDark,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.emoji_events, color: FortRunTheme.starGold, size: 28),
-              SizedBox(width: 10),
-              Text('Run Complete!', style: TextStyle(color: Colors.white)),
-            ],
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => RunSummaryScreen(
+            distanceKm: result['distanceKm'],
+            durationSeconds: result['durationSeconds'],
+            sector: result['primarySector'],
+            pointsEarned: gameResult['pointsEarned'] ?? 0,
+            streak: gameResult['streak'] ?? 0,
+            multiplier: (gameResult['multiplier'] as num?)?.toDouble() ?? 1.0,
+            routePoints: routeSnapshot,
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _resultRow('Distance', '${result['distanceKm'].toStringAsFixed(2)} km'),
-              _resultRow('Duration', _formatSeconds(result['durationSeconds'])),
-              _resultRow('Sector', result['primarySector']),
-              _resultRow('Points Earned', '+$earned ⭐'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('NICE!', style: TextStyle(color: FortRunTheme.primaryGreen)),
-            ),
-          ],
         ),
       );
     }
-  }
-
-  Widget _resultRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: FortRunTheme.textSecondary)),
-          Text(value,
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-
-  String _formatSeconds(int seconds) {
-    int m = seconds ~/ 60;
-    int s = seconds % 60;
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
   // ── Sabotage ──────────────────────────────────────────────
@@ -375,12 +378,12 @@ class _HomeMapScreenState extends State<HomeMapScreen>
 
     if (currentZone == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You are not inside any recognized territory!')),
+        const SnackBar(
+            content: Text('You are not inside any recognized territory!')),
       );
       return;
     }
 
-    // Check if it's an enemy zone
     ZoneModel? zone;
     try {
       zone = _zones.firstWhere((z) => z.id == currentZone);
@@ -388,7 +391,8 @@ class _HomeMapScreenState extends State<HomeMapScreen>
 
     if (zone == null || zone.ownerId == null || zone.ownerId == uid) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You can only sabotage enemy territories! 🏴')),
+        const SnackBar(
+            content: Text('You can only sabotage enemy territories!')),
       );
       return;
     }
@@ -401,9 +405,23 @@ class _HomeMapScreenState extends State<HomeMapScreen>
     );
   }
 
+  void _locateMe() async {
+    final locService = context.read<LocationService>();
+    final pos = await locService.getCurrentPosition();
+    if (pos != null && _mapController != null) {
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(pos.latitude, pos.longitude),
+          15.5,
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _zoneSubscription?.cancel();
+    _wallSubscription?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
@@ -413,7 +431,6 @@ class _HomeMapScreenState extends State<HomeMapScreen>
     final locService = context.watch<LocationService>();
     final pos = locService.currentPosition;
 
-    // Update polyline during tracking
     if (locService.isTracking && locService.routePoints.isNotEmpty) {
       _polylines.clear();
       _polylines.add(Polyline(
@@ -449,18 +466,19 @@ class _HomeMapScreenState extends State<HomeMapScreen>
             mapToolbarEnabled: false,
           ),
 
-          // ── Top Bar (zone indicator) ──────────────────
+          // ── Top Bar ──────────────────────────────────
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 16,
             right: 16,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               decoration: BoxDecoration(
-                color: FortRunTheme.cardDark.withOpacity(0.92),
+                color: FortRunTheme.cardDark.withAlpha(234),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: FortRunTheme.primaryGreen.withOpacity(0.3),
+                  color: FortRunTheme.primaryGreen.withAlpha(77),
                   width: 1,
                 ),
               ),
@@ -483,9 +501,10 @@ class _HomeMapScreenState extends State<HomeMapScreen>
                   ),
                   if (locService.isTracking) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: FortRunTheme.enemyRed.withOpacity(0.2),
+                        color: FortRunTheme.enemyRed.withAlpha(51),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Row(
@@ -508,9 +527,42 @@ class _HomeMapScreenState extends State<HomeMapScreen>
                         ],
                       ),
                     ),
+                  ] else ...[
+                    // Activity feed bell
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const ActivityFeedScreen()),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: FortRunTheme.primaryGreen.withAlpha(25),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.notifications_outlined,
+                            color: FortRunTheme.primaryGreen, size: 20),
+                      ),
+                    ),
                   ],
                 ],
               ),
+            ),
+          ),
+
+          // ── Locate Me FAB ──────────────────────────────
+          Positioned(
+            right: 16,
+            bottom: locService.isTracking ? 200 : 100,
+            child: FloatingActionButton.small(
+              heroTag: 'locate_me',
+              onPressed: _locateMe,
+              backgroundColor: FortRunTheme.cardDark,
+              child: const Icon(Icons.my_location,
+                  color: FortRunTheme.primaryGreen, size: 20),
             ),
           ),
 
@@ -526,11 +578,11 @@ class _HomeMapScreenState extends State<HomeMapScreen>
                   gradient: FortRunTheme.cardGradient,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                    color: FortRunTheme.primaryGreen.withOpacity(0.3),
+                    color: FortRunTheme.primaryGreen.withAlpha(77),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
+                      color: Colors.black.withAlpha(102),
                       blurRadius: 20,
                     ),
                   ],

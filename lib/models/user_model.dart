@@ -17,6 +17,10 @@ class UserModel {
   final String? clanId;
   final String? photoUrl;
   final DateTime createdAt;
+  final int streakCount;
+  final int longestStreak;
+  final DateTime? lastRunDate;
+  final int totalRuns;
 
   const UserModel({
     required this.id,
@@ -29,6 +33,10 @@ class UserModel {
     this.clanId,
     this.photoUrl,
     required this.createdAt,
+    this.streakCount = 0,
+    this.longestStreak = 0,
+    this.lastRunDate,
+    this.totalRuns = 0,
   });
 
   /// Deserialize from Supabase row (Map<String, dynamic>).
@@ -44,6 +52,12 @@ class UserModel {
       clanId: data['clan_id'] as String?,
       photoUrl: data['photo_url'] as String?,
       createdAt: DateTime.tryParse(data['created_at']?.toString() ?? '') ?? DateTime.now(),
+      streakCount: (data['streak_count'] ?? 0) as int,
+      longestStreak: (data['longest_streak'] ?? 0) as int,
+      lastRunDate: data['last_run_date'] != null
+          ? DateTime.tryParse(data['last_run_date'].toString())
+          : null,
+      totalRuns: (data['total_runs'] ?? 0) as int,
     );
   }
 
@@ -74,6 +88,9 @@ class UserModel {
       'current_fortress_sector': currentFortressSector,
       'clan_id': clanId,
       'photo_url': photoUrl,
+      'streak_count': streakCount,
+      'longest_streak': longestStreak,
+      'total_runs': totalRuns,
     };
   }
 
@@ -86,6 +103,10 @@ class UserModel {
     String? currentFortressSector,
     String? clanId,
     String? photoUrl,
+    int? streakCount,
+    int? longestStreak,
+    DateTime? lastRunDate,
+    int? totalRuns,
   }) {
     return UserModel(
       id: id,
@@ -98,6 +119,10 @@ class UserModel {
       clanId: clanId ?? this.clanId,
       photoUrl: photoUrl ?? this.photoUrl,
       createdAt: createdAt,
+      streakCount: streakCount ?? this.streakCount,
+      longestStreak: longestStreak ?? this.longestStreak,
+      lastRunDate: lastRunDate ?? this.lastRunDate,
+      totalRuns: totalRuns ?? this.totalRuns,
     );
   }
 }

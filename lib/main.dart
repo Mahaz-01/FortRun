@@ -25,8 +25,8 @@ import 'screens/home_shell.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Load environment variables from .env
-  await dotenv.load(fileName: '.env');
+  // 1. Load environment variables from env asset
+  await dotenv.load(fileName: 'env');
 
   // 2. Initialize Supabase
   await Supabase.initialize(

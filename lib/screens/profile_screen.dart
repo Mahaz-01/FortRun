@@ -5,13 +5,55 @@ import '../services/database_service.dart';
 import '../models/user_model.dart';
 import '../models/run_model.dart';
 import '../utils/theme.dart';
+import 'settings_screen.dart';
 
 /// ============================================================
-/// ProfileScreen — User stats, controlled territories, run history.
+/// ProfileScreen — User stats, streaks, run history, settings.
 /// ============================================================
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
+
+  void _editName(BuildContext context, UserModel user) {
+    final controller = TextEditingController(text: user.name);
+    final dbService = context.read<DatabaseService>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: FortRunTheme.cardDark,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Edit Name', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: 'Your name',
+            prefixIcon: Icon(Icons.person),
+          ),
+          maxLength: 24,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: FortRunTheme.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isEmpty) return;
+              Navigator.pop(ctx);
+              try {
+                await dbService.updateUser(user.id, {'name': name});
+              } catch (_) {}
+            },
+            child: const Text('SAVE'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +88,8 @@ class ProfileScreen extends StatelessWidget {
             final user = snapshot.data;
             if (user == null) {
               return const Center(
-                child: Text('User data not found', style: TextStyle(color: Colors.white)),
+                child: Text('User data not found',
+                    style: TextStyle(color: Colors.white)),
               );
             }
 
@@ -55,12 +98,26 @@ class ProfileScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
-                    const SizedBox(height: 10),
+                    // ── Top bar with settings ───────────────
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const SettingsScreen()),
+                          );
+                        },
+                        icon: const Icon(Icons.settings,
+                            color: FortRunTheme.textMuted),
+                      ),
+                    ),
 
                     // ── Avatar & Name ───────────────────────
                     Container(
                       padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: FortRunTheme.primaryGradient,
                       ),
@@ -68,7 +125,9 @@ class ProfileScreen extends StatelessWidget {
                         radius: 44,
                         backgroundColor: FortRunTheme.cardDark,
                         child: Text(
-                          user.name.isNotEmpty ? user.name[0].toUpperCase() : 'R',
+                          user.name.isNotEmpty
+                              ? user.name[0].toUpperCase()
+                              : 'R',
                           style: const TextStyle(
                             fontSize: 36,
                             fontWeight: FontWeight.w800,
@@ -78,32 +137,45 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 14),
-                    Text(
-                      user.name,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          user.name,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () => _editName(context, user),
+                          child: const Icon(Icons.edit,
+                              color: FortRunTheme.textMuted, size: 18),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(
                       user.phone ?? user.email ?? '',
-                      style: const TextStyle(color: FortRunTheme.textMuted, fontSize: 13),
+                      style: const TextStyle(
+                          color: FortRunTheme.textMuted, fontSize: 13),
                     ),
                     if (user.currentFortressSector != null) ...[
                       const SizedBox(height: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 5),
                         decoration: BoxDecoration(
-                          color: FortRunTheme.primaryGreen.withOpacity(0.15),
+                          color: FortRunTheme.primaryGreen.withAlpha(38),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: FortRunTheme.primaryGreen.withOpacity(0.4),
+                            color: FortRunTheme.primaryGreen.withAlpha(102),
                           ),
                         ),
                         child: Text(
-                          '🏰 Fortress: ${user.currentFortressSector}',
+                          'Fortress: ${user.currentFortressSector}',
                           style: const TextStyle(
                             color: FortRunTheme.primaryGreen,
                             fontSize: 12,
@@ -113,13 +185,56 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ],
 
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 24),
+
+                    // ── Streak Banner ─────────────────────────
+                    if (user.streakCount > 0)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              FortRunTheme.starGold.withAlpha(30),
+                              FortRunTheme.warningOrange.withAlpha(30),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                              color: FortRunTheme.starGold.withAlpha(77)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.local_fire_department,
+                                color: FortRunTheme.starGold, size: 22),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${user.streakCount}-day streak',
+                              style: const TextStyle(
+                                color: FortRunTheme.starGold,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Best: ${user.longestStreak}',
+                              style: TextStyle(
+                                color: FortRunTheme.starGold.withAlpha(153),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
 
                     // ── Stats Grid ──────────────────────────
                     Row(
                       children: [
                         _statCard(
-                          '${user.totalKm.toStringAsFixed(1)}',
+                          user.totalKm.toStringAsFixed(1),
                           'Total KM',
                           Icons.straighten,
                           FortRunTheme.primaryGreen,
@@ -130,6 +245,24 @@ class ProfileScreen extends StatelessWidget {
                           'Points',
                           Icons.star,
                           FortRunTheme.starGold,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _statCard(
+                          '${user.totalRuns}',
+                          'Total Runs',
+                          Icons.directions_run,
+                          FortRunTheme.safeBlue,
+                        ),
+                        const SizedBox(width: 12),
+                        _statCard(
+                          '${user.longestStreak}',
+                          'Best Streak',
+                          Icons.local_fire_department,
+                          FortRunTheme.warningOrange,
                         ),
                       ],
                     ),
@@ -151,10 +284,11 @@ class ProfileScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
 
-                    FutureBuilder<List<RunModel>>(
-                      future: dbService.getUserRuns(uid),
+                    StreamBuilder<List<RunModel>>(
+                      stream: dbService.streamUserRuns(uid),
                       builder: (context, runSnap) {
-                        if (runSnap.connectionState == ConnectionState.waiting) {
+                        if (runSnap.connectionState ==
+                            ConnectionState.waiting) {
                           return const Padding(
                             padding: EdgeInsets.all(30),
                             child: CircularProgressIndicator(
@@ -173,11 +307,13 @@ class ProfileScreen extends StatelessWidget {
                             ),
                             child: const Column(
                               children: [
-                                Icon(Icons.directions_run, color: FortRunTheme.textMuted, size: 40),
+                                Icon(Icons.directions_run,
+                                    color: FortRunTheme.textMuted, size: 40),
                                 SizedBox(height: 10),
                                 Text(
                                   'No runs yet. Hit START RUN!',
-                                  style: TextStyle(color: FortRunTheme.textMuted),
+                                  style: TextStyle(
+                                      color: FortRunTheme.textMuted),
                                 ),
                               ],
                             ),
@@ -185,23 +321,12 @@ class ProfileScreen extends StatelessWidget {
                         }
 
                         return Column(
-                          children: runs.map((run) => _runTile(run)).toList(),
+                          children:
+                              runs.map((run) => _runTile(run)).toList(),
                         );
                       },
                     ),
 
-                    const SizedBox(height: 30),
-
-                    // ── Sign Out Button ─────────────────────
-                    OutlinedButton.icon(
-                      onPressed: () => authService.signOut(),
-                      icon: const Icon(Icons.logout, size: 18),
-                      label: const Text('Sign Out'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: FortRunTheme.enemyRed,
-                        side: const BorderSide(color: FortRunTheme.enemyRed),
-                      ),
-                    ),
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -213,14 +338,15 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _statCard(String value, String label, IconData icon, Color color) {
+  Widget _statCard(
+      String value, String label, IconData icon, Color color) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           gradient: FortRunTheme.cardGradient,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.2)),
+          border: Border.all(color: color.withAlpha(51)),
         ),
         child: Column(
           children: [
@@ -266,7 +392,7 @@ class ProfileScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: FortRunTheme.primaryGreen.withOpacity(0.12),
+              color: FortRunTheme.primaryGreen.withAlpha(30),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(Icons.directions_run,
@@ -288,13 +414,14 @@ class ProfileScreen extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   '$distance · $duration',
-                  style: const TextStyle(color: FortRunTheme.textMuted, fontSize: 12),
+                  style: const TextStyle(
+                      color: FortRunTheme.textMuted, fontSize: 12),
                 ),
               ],
             ),
           ),
           Text(
-            '+${run.pointsEarned} ⭐',
+            '+${run.pointsEarned}',
             style: const TextStyle(
               color: FortRunTheme.starGold,
               fontWeight: FontWeight.w700,
