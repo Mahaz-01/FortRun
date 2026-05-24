@@ -146,6 +146,33 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  // ── Google OAuth Login (opens browser, no API key needed) ───
+
+  Future<void> signInWithGoogle() async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await _client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'io.supabase.fortrun://login-callback/',
+        authScreenLaunchMode: LaunchMode.externalApplication,
+      );
+      // Auth state listener handles the login completion
+      _isLoading = false;
+      notifyListeners();
+    } on AuthException catch (e) {
+      _isLoading = false;
+      _errorMessage = e.message;
+      notifyListeners();
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
+  }
+
   // ── Sign Out ───────────────────────────────────────────────
 
   Future<void> signOut() async {

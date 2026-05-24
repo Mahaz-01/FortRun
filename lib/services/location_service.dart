@@ -2,20 +2,20 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart' as ll;
 import '../models/zone_model.dart';
 import '../services/database_service.dart';
 
 /// ============================================================
 /// LocationService — GPS tracking, polyline recording,
-/// zone detection, and distance utilities.
+/// zone detection (ray-cast), wall tick processing.
+/// Uses latlong2.LatLng (no Google Maps dependency).
 /// ============================================================
 
 class LocationService extends ChangeNotifier {
-  // ── State ──────────────────────────────────────────────────
   Position? _currentPosition;
   bool _isTracking = false;
-  final List<LatLng> _routePoints = [];
+  final List<ll.LatLng> _routePoints = [];
   double _totalDistanceKm = 0.0;
   int _elapsedSeconds = 0;
   Timer? _timer;
@@ -23,10 +23,9 @@ class LocationService extends ChangeNotifier {
   List<ZoneModel> _activeZones = [];
   String? _permissionError;
 
-  // ── Public Getters ────────────────────────────────────────
   Position? get currentPosition => _currentPosition;
   bool get isTracking => _isTracking;
-  List<LatLng> get routePoints => List.unmodifiable(_routePoints);
+  List<ll.LatLng> get routePoints => List.unmodifiable(_routePoints);
   double get totalDistanceKm => _totalDistanceKm;
   int get elapsedSeconds => _elapsedSeconds;
   String? get permissionError => _permissionError;
@@ -71,21 +70,17 @@ class LocationService extends ChangeNotifier {
       }
     }
     if (permission == LocationPermission.deniedForever) {
-      _permissionError = 'Location permission permanently denied. Please enable it in Settings.';
+      _permissionError = 'Location permission permanently denied. Please enable in Settings.';
       notifyListeners();
       return false;
     }
     return true;
   }
 
-  // ── Sync Active Zones ─────────────────────────────────────
-
   void updateActiveZones(List<ZoneModel> zones) {
     _activeZones = zones;
     notifyListeners();
   }
-
-  // ── Get Current Position ──────────────────────────────────
 
   Future<Position?> getCurrentPosition() async {
     bool hasPermission = await requestPermission();
@@ -120,31 +115,30 @@ class LocationService extends ChangeNotifier {
     _elapsedSeconds = 0;
     notifyListeners();
 
-    // Start stopwatch timer & wall tick processor (every 5 seconds)
+    // Wall tick every 5 seconds — works anywhere, no pre-drawn zones needed
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       _elapsedSeconds++;
 
       if (_elapsedSeconds % 5 == 0 && _currentPosition != null) {
-        String? activeSector = detectZone(_currentPosition!.latitude, _currentPosition!.longitude);
-        if (activeSector != null) {
-          String wallId = getWallId(_currentPosition!.latitude, _currentPosition!.longitude);
-          Map<String, dynamic> poly = getWallPolygonJson(_currentPosition!.latitude, _currentPosition!.longitude);
+        final lat = _currentPosition!.latitude;
+        final lng = _currentPosition!.longitude;
+        final wallId = getWallId(lat, lng);
+        final sectorId = getGridSector(lat, lng);
+        final poly = getWallPolygon(lat, lng);
 
-          dbService.processWallTick(
-            wallId: wallId,
-            sectorId: activeSector,
-            userId: uid,
-            clanId: cid,
-            polygonJson: poly,
-            tickAmount: 5,
-          );
-        }
+        dbService.processWallTick(
+          wallId: wallId,
+          sectorId: sectorId,
+          userId: uid,
+          clanId: cid,
+          polygonCoords: poly,
+          tickAmount: 5,
+        );
       }
 
       notifyListeners();
     });
 
-    // Subscribe to position stream
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
       distanceFilter: 5,
@@ -154,10 +148,10 @@ class LocationService extends ChangeNotifier {
       locationSettings: locationSettings,
     ).listen((Position position) {
       _currentPosition = position;
-      LatLng newPoint = LatLng(position.latitude, position.longitude);
+      ll.LatLng newPoint = ll.LatLng(position.latitude, position.longitude);
 
       if (_routePoints.isNotEmpty) {
-        LatLng lastPoint = _routePoints.last;
+        ll.LatLng lastPoint = _routePoints.last;
         double dist = _calculateDistance(
           lastPoint.latitude, lastPoint.longitude,
           newPoint.latitude, newPoint.longitude,
@@ -194,78 +188,80 @@ class LocationService extends ChangeNotifier {
 
   String? detectZone(double lat, double lng) {
     if (_activeZones.isEmpty) return null;
-
     for (var zone in _activeZones) {
       if (zone.polygonCoords.isEmpty) continue;
-
-      List<LatLng> polygon = zone.polygonCoords
-          .map((e) => LatLng(e['lat']!, e['lng']!))
+      List<ll.LatLng> polygon = zone.polygonCoords
+          .map((e) => ll.LatLng(e['lat']!, e['lng']!))
           .toList();
-
-      if (_isPointInPolygon(LatLng(lat, lng), polygon)) {
+      if (_isPointInPolygon(ll.LatLng(lat, lng), polygon)) {
         return zone.id;
       }
     }
     return null;
   }
 
-  // ── Mathematical Grid Micro-Tiles (200m x 200m) ─────────────
+  // ── Wall Grid (200m × 200m tiles) ─────────────────────────
 
   String getWallId(double lat, double lng) {
-    double gridSize = 0.0018;
+    const double gridSize = 0.0018;
     int latIndex = (lat / gridSize).floor();
     int lngIndex = (lng / gridSize).floor();
     return 'grid_${latIndex}_$lngIndex';
   }
 
-  Map<String, dynamic> getWallPolygonJson(double lat, double lng) {
-    double gridSize = 0.0018;
+  /// Returns polygon as a List (matches DB JSONB array format).
+  List<Map<String, dynamic>> getWallPolygon(double lat, double lng) {
+    const double gridSize = 0.0018;
     double baseLat = (lat / gridSize).floor() * gridSize;
     double baseLng = (lng / gridSize).floor() * gridSize;
 
-    return {
-      "points": [
-        {"lat": baseLat + gridSize, "lng": baseLng},
-        {"lat": baseLat + gridSize, "lng": baseLng + gridSize},
-        {"lat": baseLat, "lng": baseLng + gridSize},
-        {"lat": baseLat, "lng": baseLng}
-      ]
-    };
+    return [
+      {'lat': baseLat + gridSize, 'lng': baseLng},
+      {'lat': baseLat + gridSize, 'lng': baseLng + gridSize},
+      {'lat': baseLat, 'lng': baseLng + gridSize},
+      {'lat': baseLat, 'lng': baseLng},
+    ];
+  }
+
+  // Returns a human-readable grid sector name for any GPS coordinate
+  String getGridSector(double lat, double lng) {
+    const double sectorSize = 0.009; // ~1 km grid sector
+    int latIndex = (lat / sectorSize).floor();
+    int lngIndex = (lng / sectorSize).floor();
+    return 'sector_${latIndex}_$lngIndex';
   }
 
   String detectPrimarySector() {
-    Map<String, int> zoneCounts = {};
+    if (_routePoints.isEmpty) return 'Unknown';
+    // Count grid sectors across all route points and return the most visited
+    Map<String, int> sectorCounts = {};
     for (var point in _routePoints) {
-      String? zone = detectZone(point.latitude, point.longitude);
-      if (zone != null) {
-        zoneCounts[zone] = (zoneCounts[zone] ?? 0) + 1;
-      }
+      final s = getGridSector(point.latitude, point.longitude);
+      sectorCounts[s] = (sectorCounts[s] ?? 0) + 1;
     }
-    if (zoneCounts.isEmpty) return 'Unknown';
-
-    return zoneCounts.entries
+    return sectorCounts.entries
         .reduce((a, b) => a.value >= b.value ? a : b)
         .key;
   }
 
   String? get currentZone {
     if (_currentPosition == null) return null;
-    return detectZone(_currentPosition!.latitude, _currentPosition!.longitude);
+    // Try pre-drawn zones first for named display, fall back to grid sector
+    final named = detectZone(_currentPosition!.latitude, _currentPosition!.longitude);
+    return named ?? getGridSector(_currentPosition!.latitude, _currentPosition!.longitude);
   }
 
   // ── Distance Utilities ────────────────────────────────────
 
-  /// Calculate distance between two points in meters.
   double distanceToPointMeters(double lat1, double lng1, double lat2, double lng2) {
     return _calculateDistance(lat1, lng1, lat2, lng2) * 1000;
   }
 
-  // ── Point-in-Polygon (Ray Casting Algorithm) ──────────────
+  // ── Ray Casting Point-in-Polygon ──────────────────────────
 
-  bool _isPointInPolygon(LatLng point, List<LatLng> polygon) {
+  bool _isPointInPolygon(ll.LatLng point, List<ll.LatLng> polygon) {
     int n = polygon.length;
     bool inside = false;
-
     double px = point.latitude;
     double py = point.longitude;
 
@@ -279,29 +275,23 @@ class LocationService extends ChangeNotifier {
           (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
       if (intersect) inside = !inside;
     }
-
     return inside;
   }
 
   // ── Haversine Distance (km) ───────────────────────────────
 
-  double _calculateDistance(
-      double lat1, double lon1, double lat2, double lon2) {
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
     const double R = 6371;
     double dLat = _degToRad(lat2 - lat1);
     double dLon = _degToRad(lon2 - lon1);
     double a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(_degToRad(lat1)) *
-            cos(_degToRad(lat2)) *
-            sin(dLon / 2) *
-            sin(dLon / 2);
+        cos(_degToRad(lat1)) * cos(_degToRad(lat2)) *
+        sin(dLon / 2) * sin(dLon / 2);
     double c = 2 * atan2(sqrt(a), sqrt(1 - a));
     return R * c;
   }
 
   double _degToRad(double deg) => deg * (pi / 180);
-
-  // ── Cleanup ───────────────────────────────────────────────
 
   @override
   void dispose() {

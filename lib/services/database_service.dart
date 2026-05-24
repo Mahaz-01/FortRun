@@ -112,6 +112,49 @@ class DatabaseService {
     }
   }
 
+  Future<List<RunModel>> getAllRecentRuns({int limit = 200}) async {
+    try {
+      final response = await _client
+          .from('runs')
+          .select()
+          .order('timestamp', ascending: false)
+          .limit(limit);
+      return (response as List)
+          .map((row) => RunModel.fromMap(row as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Stream<List<RunModel>> streamAllRecentRuns({int limit = 200}) {
+    final controller = StreamController<List<RunModel>>.broadcast();
+
+    getAllRecentRuns(limit: limit).then((runs) {
+      if (!controller.isClosed) controller.add(runs);
+    });
+
+    final channel = _client
+        .channel('all_runs_global')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'runs',
+          callback: (payload) {
+            getAllRecentRuns(limit: limit).then((runs) {
+              if (!controller.isClosed) controller.add(runs);
+            });
+          },
+        )
+        .subscribe();
+
+    controller.onCancel = () {
+      _client.removeChannel(channel);
+    };
+
+    return controller.stream;
+  }
+
   Stream<List<RunModel>> streamUserRuns(String uid, {int limit = 50}) {
     final controller = StreamController<List<RunModel>>.broadcast();
 
@@ -387,7 +430,7 @@ class DatabaseService {
     required String sectorId,
     required String userId,
     String? clanId,
-    required Map<String, dynamic> polygonJson,
+    required List<Map<String, dynamic>> polygonCoords,
     required int tickAmount,
   }) async {
     try {
@@ -396,10 +439,10 @@ class DatabaseService {
         'target_sector_id': sectorId,
         'uid': userId,
         'cid': clanId,
-        'poly': polygonJson,
+        'poly': polygonCoords,
         'tick_amount': tickAmount,
       });
-    } catch (e) {
+    } catch (_) {
       // Non-critical tick, don't crash the run
     }
   }

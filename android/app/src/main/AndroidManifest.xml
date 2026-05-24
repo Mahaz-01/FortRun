@@ -12,15 +12,6 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
-        <!--
-          Google Maps API Key — injected by Gradle from secrets.properties.
-          No real key is hardcoded here. Gradle replaces the ${GOOGLE_MAPS_API_KEY}
-          placeholder at build time using manifestPlaceholders in build.gradle.
-        -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${GOOGLE_MAPS_API_KEY}"/>
-
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -33,9 +24,19 @@
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme"/>
+            <!-- Launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- Supabase Google OAuth deep link: io.supabase.fortrun://login-callback/ -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="io.supabase.fortrun"
+                    android:host="login-callback"/>
             </intent-filter>
         </activity>
 

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\fortrun\" -Recurse -Force)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "Bash(ConvertTo-Json -Depth 100)",
+      "Bash(Out-String)"
+    ]
+  }
+}

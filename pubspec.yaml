@@ -1,5 +1,5 @@
 name: fortrun
-description: "A gamified running app based in Islamabad, featuring territory capture and sabotage."
+description: "FortRun — Gamified territory running app for Pakistan. Claim sectors, invade rivals, build your empire."
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -11,7 +11,7 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
 
-  # Supabase — Auth, Database (PostgreSQL), Realtime, Storage
+  # Backend — Supabase Auth, PostgreSQL, Realtime
   supabase_flutter: ^2.5.0
 
   # Environment Variables
@@ -20,11 +20,21 @@ dependencies:
   # State Management
   provider: ^6.1.2
 
-  # Location & Maps
-  google_maps_flutter: ^2.7.0
+  # Maps (free, no API key required)
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+  # Location & GPS
   geolocator: ^12.0.0
-  location: ^6.0.2
-  flutter_polyline_points: ^2.0.0
+
+  # Networking (OSM Overpass API for dynamic restaurants)
+  http: ^1.2.0
+
+  # Typography
+  google_fonts: ^6.2.1
+
+  # Sharing (run cards to WhatsApp/Instagram)
+  share_plus: ^10.0.0
 
   # Local Storage & Utilities
   shared_preferences: ^2.3.1
