@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' as ll;
@@ -22,6 +23,11 @@ class LocationService extends ChangeNotifier {
   StreamSubscription<Position>? _positionSubscription;
   List<ZoneModel> _activeZones = [];
   String? _permissionError;
+  DateTime? _lastFixTime;
+
+  // GPS noise gates — keep recorded distance honest.
+  static const double _maxAccuracyMeters = 30;   // drop fixes worse than this
+  static const double _maxSpeedMps = 12.0;        // ~43 km/h: not running -> reject jump
 
   Position? get currentPosition => _currentPosition;
   bool get isTracking => _isTracking;
@@ -113,6 +119,7 @@ class LocationService extends ChangeNotifier {
     _routePoints.clear();
     _totalDistanceKm = 0.0;
     _elapsedSeconds = 0;
+    _lastFixTime = null;
     notifyListeners();
 
     // Wall tick every 5 seconds — works anywhere, no pre-drawn zones needed
@@ -137,26 +144,69 @@ class LocationService extends ChangeNotifier {
       notifyListeners();
     });
 
-    const locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 5,
-    );
+    // Platform-aware settings. On Android we run a FOREGROUND SERVICE so GPS
+    // keeps tracking when the screen is off / app is backgrounded mid-run.
+    // On iOS we allow background location updates. Web falls back to plain.
+    final LocationSettings locationSettings;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      locationSettings = AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+        intervalDuration: const Duration(seconds: 2),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'FortRun — run in progress',
+          notificationText: 'Tracking your route and claiming territory.',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
+      );
+    } else if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      locationSettings = AppleSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+        allowBackgroundLocationUpdates: true,
+        pauseLocationUpdatesAutomatically: false,
+        showBackgroundLocationIndicator: true,
+      );
+    } else {
+      locationSettings = const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      );
+    }
 
     _positionSubscription = Geolocator.getPositionStream(
       locationSettings: locationSettings,
     ).listen((Position position) {
-      _currentPosition = position;
-      ll.LatLng newPoint = ll.LatLng(position.latitude, position.longitude);
+      // Gate 1: drop low-accuracy fixes (urban canyon / cold start noise).
+      if (position.accuracy > 0 && position.accuracy > _maxAccuracyMeters) {
+        return;
+      }
+
+      final now = position.timestamp;
+      final newPoint = ll.LatLng(position.latitude, position.longitude);
 
       if (_routePoints.isNotEmpty) {
-        ll.LatLng lastPoint = _routePoints.last;
-        double dist = _calculateDistance(
+        final lastPoint = _routePoints.last;
+        final double dist = _calculateDistance(
           lastPoint.latitude, lastPoint.longitude,
           newPoint.latitude, newPoint.longitude,
         );
+
+        // Gate 2: reject teleport/multipath spikes by checking implied speed.
+        final double dtSec = _lastFixTime == null
+            ? 0
+            : now.difference(_lastFixTime!).inMilliseconds / 1000.0;
+        if (dtSec > 0 && (dist * 1000 / dtSec) > _maxSpeedMps) {
+          return; // implausible for a run — ignore this fix entirely
+        }
+
         _totalDistanceKm += dist;
       }
 
+      _currentPosition = position;
+      _lastFixTime = now;
       _routePoints.add(newPoint);
       notifyListeners();
     });
