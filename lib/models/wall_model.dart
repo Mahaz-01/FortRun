@@ -5,6 +5,8 @@
 /// Each wall is a 200m x 200m mathematical grid tile inside a sector.
 /// ============================================================
 
+import 'dart:convert';
+
 class WallModel {
   final String id;
   final String sectorId;
@@ -26,7 +28,8 @@ class WallModel {
   factory WallModel.fromMap(Map<String, dynamic> data) {
     List<Map<String, double>> poly = [];
     if (data['polygon_coords'] != null) {
-      final raw = data['polygon_coords'] as List<dynamic>;
+      final field = data['polygon_coords'];
+      final raw = (field is String ? json.decode(field) : field) as List<dynamic>;
       poly = raw.map((e) {
         if (e is Map) {
           return {

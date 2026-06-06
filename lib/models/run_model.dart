@@ -6,6 +6,8 @@
 /// `polyline_coords` stored as JSONB array for spatial data.
 /// ============================================================
 
+import 'dart:convert';
+
 class RunModel {
   final String? id;
   final String userId;
@@ -31,7 +33,9 @@ class RunModel {
   factory RunModel.fromMap(Map<String, dynamic> data) {
     List<Map<String, double>> coords = [];
     if (data['polyline_coords'] != null) {
-      final raw = data['polyline_coords'] as List<dynamic>;
+      final field = data['polyline_coords'];
+      // Realtime payloads can deliver JSONB as a String; REST gives a List.
+      final raw = (field is String ? json.decode(field) : field) as List<dynamic>;
       coords = raw.map((e) {
         if (e is Map) {
           return {

@@ -7,6 +7,8 @@
 /// proper relational design and scalability.
 /// ============================================================
 
+import 'dart:convert';
+
 class ZoneModel {
   final String id;
   final String name;
@@ -30,7 +32,8 @@ class ZoneModel {
   factory ZoneModel.fromMap(Map<String, dynamic> data) {
     List<Map<String, double>> poly = [];
     if (data['polygon_coords'] != null) {
-      final raw = data['polygon_coords'] as List<dynamic>;
+      final field = data['polygon_coords'];
+      final raw = (field is String ? json.decode(field) : field) as List<dynamic>;
       poly = raw.map((e) {
         if (e is Map) {
           return {

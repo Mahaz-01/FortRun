@@ -8,65 +8,69 @@ import 'package:google_fonts/google_fonts.dart';
 
 class FortRunTheme {
   // ── Brand Colors ───────────────────────────────────────────
-  static const Color primaryGreen = Color(0xFF00C853);
-  static const Color primaryGreenDark = Color(0xFF00A651);
-  static const Color primaryGreenDeep = Color(0xFF007A3D);
-  static const Color accentWhite = Color(0xFFF5F5F5);
-  static const Color starGold = Color(0xFFFFD700);
+  // ONE signature accent (green). Used only for identity, primary
+  // actions, your route and your territory — never sprayed around.
+  static const Color primaryGreen = Color(0xFF00D26A);
+  static const Color primaryGreenDark = Color(0xFF00A957);
+  static const Color primaryGreenDeep = Color(0xFF067F45);
+  static const Color accentWhite = Color(0xFFF5F7FA);
+  // Reserved semantic accents (rare): gold = points, red = enemy.
+  static const Color starGold = Color(0xFFFFC53D);
   static const Color starGoldDim = Color(0xFFB8860B);
 
-  // ── Surface & Background ──────────────────────────────────
-  static const Color scaffoldDark = Color(0xFF080808);
-  static const Color cardDark = Color(0xFF111111);
-  static const Color cardDarkAlt = Color(0xFF1A1A1A);
-  static const Color cardDarkBorder = Color(0xFF252525);
-  static const Color surfaceDark = Color(0xFF0F0F0F);
+  // ── Surface & Background (warm-neutral greyscale ramp) ─────
+  static const Color scaffoldDark = Color(0xFF0A0B0D);
+  static const Color cardDark = Color(0xFF15171C);
+  static const Color cardDarkAlt = Color(0xFF1C1F26);
+  static const Color cardDarkBorder = Color(0xFF272B33);
+  static const Color surfaceDark = Color(0xFF101216);
 
   // ── Status Colors ─────────────────────────────────────────
-  static const Color enemyRed = Color(0xFFFF3D3D);
+  static const Color enemyRed = Color(0xFFFF4D4D);
   static const Color enemyRedDim = Color(0xFFB71C1C);
-  static const Color warningOrange = Color(0xFFFF9800);
-  static const Color safeBlue = Color(0xFF29B6F6);
+  static const Color warningOrange = Color(0xFFFFA726);
+  static const Color safeBlue = Color(0xFF4FB6E6);
   static const Color clanPurple = Color(0xFF9C27B0);
 
-  // ── Text ──────────────────────────────────────────────────
-  static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFFB0BEC5);
-  static const Color textMuted = Color(0xFF546E7A);
+  // ── Text (three levels, that's it) ─────────────────────────
+  static const Color textPrimary = Color(0xFFF5F7FA);
+  static const Color textSecondary = Color(0xFF9BA3AD);
+  static const Color textMuted = Color(0xFF5C646E);
 
   // ── Gradients ─────────────────────────────────────────────
+  // Gradients are intentionally subtle (tight delta) — accent, not neon.
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [Color(0xFF00C853), Color(0xFF007A3D)],
+    colors: [Color(0xFF00D26A), Color(0xFF019B53)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient primaryGradientVertical = LinearGradient(
-    colors: [Color(0xFF00C853), Color(0xFF007A3D)],
+    colors: [Color(0xFF00D26A), Color(0xFF019B53)],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
 
   static const LinearGradient cardGradient = LinearGradient(
-    colors: [Color(0xFF1A1A1A), Color(0xFF111111)],
+    colors: [Color(0xFF1C1F26), Color(0xFF15171C)],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
 
   static const LinearGradient sabotageGradient = LinearGradient(
-    colors: [Color(0xFFFF3D3D), Color(0xFFFF6F00)],
+    colors: [Color(0xFFFF4D4D), Color(0xFFD63A2E)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient goldGradient = LinearGradient(
-    colors: [Color(0xFFFFD700), Color(0xFFFF8F00)],
+    colors: [Color(0xFFFFC53D), Color(0xFFE0941F)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient backgroundGradient = LinearGradient(
-    colors: [Color(0xFF080808), Color(0xFF0D1A0D), Color(0xFF080808)],
+    colors: [Color(0xFF0A0B0D), Color(0xFF0C0E12), Color(0xFF0A0B0D)],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
@@ -184,7 +188,7 @@ class FortRunTheme {
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: primaryGreen,
         foregroundColor: Colors.white,
-        elevation: 8,
+        elevation: 0,
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: cardDarkAlt,

@@ -127,11 +127,23 @@ class DatabaseService {
     }
   }
 
+  /// Global recent-runs feed. Seeds once, then appends each new run from
+  /// the realtime payload — instead of re-downloading the whole table (with
+  /// full GPS polylines) on every insert. This is the key scalability fix:
+  /// traffic no longer grows with (active users × dataset size) per event.
   Stream<List<RunModel>> streamAllRecentRuns({int limit = 200}) {
     final controller = StreamController<List<RunModel>>.broadcast();
+    final List<RunModel> cache = [];
+
+    void emit() {
+      if (!controller.isClosed) controller.add(List.unmodifiable(cache));
+    }
 
     getAllRecentRuns(limit: limit).then((runs) {
-      if (!controller.isClosed) controller.add(runs);
+      cache
+        ..clear()
+        ..addAll(runs);
+      emit();
     });
 
     final channel = _client
@@ -141,9 +153,21 @@ class DatabaseService {
           schema: 'public',
           table: 'runs',
           callback: (payload) {
-            getAllRecentRuns(limit: limit).then((runs) {
-              if (!controller.isClosed) controller.add(runs);
-            });
+            try {
+              cache.insert(0, RunModel.fromMap(payload.newRecord));
+              if (cache.length > limit) {
+                cache.removeRange(limit, cache.length);
+              }
+              emit();
+            } catch (_) {
+              // Fallback to a full refetch only if the delta can't be parsed.
+              getAllRecentRuns(limit: limit).then((runs) {
+                cache
+                  ..clear()
+                  ..addAll(runs);
+                emit();
+              });
+            }
           },
         )
         .subscribe();
@@ -205,11 +229,22 @@ class DatabaseService {
     }
   }
 
+  /// Live zones. Seeds once into a keyed cache, then applies each
+  /// insert/update/delete from the realtime payload instead of re-pulling
+  /// every zone on every change.
   Stream<List<ZoneModel>> streamAllZones() {
     final controller = StreamController<List<ZoneModel>>.broadcast();
+    final Map<String, ZoneModel> cache = {};
+
+    void emit() {
+      if (!controller.isClosed) controller.add(cache.values.toList());
+    }
 
     _fetchAllZones().then((zones) {
-      if (!controller.isClosed) controller.add(zones);
+      for (final z in zones) {
+        cache[z.id] = z;
+      }
+      emit();
     });
 
     final channel = _client
@@ -219,9 +254,24 @@ class DatabaseService {
           schema: 'public',
           table: 'zones',
           callback: (payload) {
-            _fetchAllZones().then((zones) {
-              if (!controller.isClosed) controller.add(zones);
-            });
+            try {
+              if (payload.eventType == PostgresChangeEvent.delete) {
+                final id = payload.oldRecord['id'];
+                if (id != null) cache.remove(id.toString());
+              } else if (payload.newRecord.isNotEmpty) {
+                final z = ZoneModel.fromMap(payload.newRecord);
+                cache[z.id] = z;
+              }
+              emit();
+            } catch (_) {
+              _fetchAllZones().then((zones) {
+                cache.clear();
+                for (final z in zones) {
+                  cache[z.id] = z;
+                }
+                emit();
+              });
+            }
           },
         )
         .subscribe();
@@ -386,11 +436,21 @@ class DatabaseService {
 
   // ── Walls (Micro-Level Hybrid) ────────────────────────────
 
+  /// Live walls. Same keyed-cache delta strategy as zones — critical because
+  /// walls update every few seconds per active runner.
   Stream<List<WallModel>> streamAllWalls() {
     final controller = StreamController<List<WallModel>>.broadcast();
+    final Map<String, WallModel> cache = {};
+
+    void emit() {
+      if (!controller.isClosed) controller.add(cache.values.toList());
+    }
 
     _fetchAllWalls().then((walls) {
-      if (!controller.isClosed) controller.add(walls);
+      for (final w in walls) {
+        cache[w.id] = w;
+      }
+      emit();
     });
 
     final channel = _client
@@ -400,9 +460,24 @@ class DatabaseService {
           schema: 'public',
           table: 'walls',
           callback: (payload) {
-            _fetchAllWalls().then((walls) {
-              if (!controller.isClosed) controller.add(walls);
-            });
+            try {
+              if (payload.eventType == PostgresChangeEvent.delete) {
+                final id = payload.oldRecord['id'];
+                if (id != null) cache.remove(id.toString());
+              } else if (payload.newRecord.isNotEmpty) {
+                final w = WallModel.fromMap(payload.newRecord);
+                cache[w.id] = w;
+              }
+              emit();
+            } catch (_) {
+              _fetchAllWalls().then((walls) {
+                cache.clear();
+                for (final w in walls) {
+                  cache[w.id] = w;
+                }
+                emit();
+              });
+            }
           },
         )
         .subscribe();
@@ -425,11 +500,12 @@ class DatabaseService {
     }
   }
 
+  /// Wall tick. The server derives the actor from auth.uid() and looks up
+  /// the user's clan itself — the client no longer passes (and cannot spoof)
+  /// the owner or clan.
   Future<void> processWallTick({
     required String wallId,
     required String sectorId,
-    required String userId,
-    String? clanId,
     required List<Map<String, dynamic>> polygonCoords,
     required int tickAmount,
   }) async {
@@ -437,8 +513,6 @@ class DatabaseService {
       await _client.rpc('process_wall_tick', params: {
         'target_wall_id': wallId,
         'target_sector_id': sectorId,
-        'uid': userId,
-        'cid': clanId,
         'poly': polygonCoords,
         'tick_amount': tickAmount,
       });
@@ -457,20 +531,8 @@ class DatabaseService {
     }
   }
 
-  // ── Streaks ───────────────────────────────────────────────
-
-  /// Calls the update_streak RPC and returns {streak, multiplier, new_streak}
-  Future<Map<String, dynamic>> updateStreak(String uid) async {
-    try {
-      final result = await _client.rpc('update_streak', params: {'uid': uid});
-      if (result is Map) {
-        return Map<String, dynamic>.from(result);
-      }
-      return {'streak': 0, 'multiplier': 1.0, 'new_streak': false};
-    } catch (e) {
-      return {'streak': 0, 'multiplier': 1.0, 'new_streak': false};
-    }
-  }
+  // Streaks are now handled entirely server-side inside the process_run RPC
+  // (see security_hardening.sql). The client never advances streaks directly.
 
   // ── Activity Feed ─────────────────────────────────────────
 
@@ -494,10 +556,16 @@ class DatabaseService {
 
   Stream<List<Map<String, dynamic>>> streamActivityFeed({int limit = 50}) {
     final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
+    final List<Map<String, dynamic>> cache = [];
 
-    _fetchActivityFeed(limit: limit).then((items) {
-      if (!controller.isClosed) controller.add(items);
-    });
+    void seed(List<Map<String, dynamic>> items) {
+      cache
+        ..clear()
+        ..addAll(items);
+      if (!controller.isClosed) controller.add(List.unmodifiable(cache));
+    }
+
+    _fetchActivityFeed(limit: limit).then(seed);
 
     final channel = _client
         .channel('activity_feed')
@@ -506,9 +574,19 @@ class DatabaseService {
           schema: 'public',
           table: 'activity_feed',
           callback: (payload) {
-            _fetchActivityFeed(limit: limit).then((items) {
-              if (!controller.isClosed) controller.add(items);
-            });
+            try {
+              if (payload.newRecord.isNotEmpty) {
+                cache.insert(0, Map<String, dynamic>.from(payload.newRecord));
+                if (cache.length > limit) {
+                  cache.removeRange(limit, cache.length);
+                }
+                if (!controller.isClosed) {
+                  controller.add(List.unmodifiable(cache));
+                }
+              }
+            } catch (_) {
+              _fetchActivityFeed(limit: limit).then(seed);
+            }
           },
         )
         .subscribe();
