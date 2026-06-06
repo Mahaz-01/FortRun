@@ -21,8 +21,15 @@ class GameEngine {
     required DatabaseService dbService,
   }) async {
     try {
+      // Pass the runner's LOCAL calendar date so streaks roll over at the
+      // user's midnight, not UTC's.
+      final now = DateTime.now();
+      final localDate = '${now.year.toString().padLeft(4, '0')}-'
+          '${now.month.toString().padLeft(2, '0')}-'
+          '${now.day.toString().padLeft(2, '0')}';
       final result = await _client.rpc('process_run', params: {
         'p_run_id': runId,
+        'p_local_date': localDate,
       });
       if (result is Map) {
         final m = Map<String, dynamic>.from(result);

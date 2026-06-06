@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -7,7 +6,6 @@ import '../services/database_service.dart';
 import '../models/user_model.dart';
 import '../models/run_model.dart';
 import '../utils/theme.dart';
-import '../utils/tappable.dart';
 
 class ChallengesScreen extends StatelessWidget {
   const ChallengesScreen({super.key});

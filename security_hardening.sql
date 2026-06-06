@@ -60,6 +60,10 @@ DROP FUNCTION IF EXISTS public.decrement_user_points(uuid, integer);
 -- Old overloads that trusted client-passed ids:
 DROP FUNCTION IF EXISTS public.process_wall_tick(text, text, uuid, uuid, jsonb, integer);
 DROP FUNCTION IF EXISTS public.update_streak(uuid);
+-- Old no-arg / single-arg variants replaced by timezone-aware versions below
+-- (dropped to avoid "function is not unique" ambiguity with the new defaults):
+DROP FUNCTION IF EXISTS public.update_streak();
+DROP FUNCTION IF EXISTS public.process_run(uuid);
 
 -- ── 2b. Lock RLS: clients may READ the economy, never WRITE it ──
 -- Only the SECURITY DEFINER functions below (run as table owner) may mutate.
@@ -93,15 +97,17 @@ CREATE TRIGGER trg_protect_user_scores
   BEFORE UPDATE ON public.users
   FOR EACH ROW EXECUTE FUNCTION public.protect_user_score_columns();
 
--- ── 2c. Streak (argless, trusts auth.uid()) ──
-CREATE OR REPLACE FUNCTION public.update_streak()
+-- ── 2c. Streak (trusts auth.uid(); timezone-aware via p_today) ──
+-- p_today = the runner's LOCAL date (passed by the client). Falls back to
+-- server UTC date when null, so older app builds keep working.
+CREATE OR REPLACE FUNCTION public.update_streak(p_today DATE DEFAULT NULL)
 RETURNS JSONB AS $$
 DECLARE
   uid UUID := auth.uid();
   prev_date DATE;
   cur_streak INTEGER;
   best_streak INTEGER;
-  today DATE := CURRENT_DATE;
+  today DATE := COALESCE(p_today, CURRENT_DATE);
   multiplier NUMERIC := 1.0;
 BEGIN
   IF uid IS NULL THEN
@@ -176,7 +182,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- ── 2f. THE trusted run scorer. Client inserts a run, then calls this. ──
-CREATE OR REPLACE FUNCTION public.process_run(p_run_id UUID)
+-- p_local_date = the runner's local calendar date (for correct streaks).
+CREATE OR REPLACE FUNCTION public.process_run(p_run_id UUID, p_local_date DATE DEFAULT NULL)
 RETURNS JSONB AS $$
 DECLARE
   r            public.runs%ROWTYPE;
@@ -203,7 +210,7 @@ BEGIN
     RETURN jsonb_build_object('pointsEarned', 0, 'streak', 0, 'multiplier', 1.0, 'rejected', true);
   END IF;
 
-  streak_json := public.update_streak();
+  streak_json := public.update_streak(p_local_date);
   mult := COALESCE((streak_json->>'multiplier')::numeric, 1.0);
   pts  := round(r.distance_km * 10 * mult);   -- pointsPerKmOwn
   owner_deduct := round(r.distance_km * 5);   -- pointsDeductOpponent
