@@ -129,8 +129,6 @@ class LocationService extends ChangeNotifier {
         dbService.processWallTick(
           wallId: wallId,
           sectorId: sectorId,
-          userId: uid,
-          clanId: cid,
           polygonCoords: poly,
           tickAmount: 5,
         );

@@ -490,14 +490,15 @@ class _HomeMapScreenState extends State<HomeMapScreen>
       polylineCoords: List<Map<String, double>>.from(
           (result['polylineCoords'] as List).map((e) => Map<String, double>.from(e))),
     );
-    try { await dbService.saveRun(run); } catch (_) {}
+    String? runId;
+    try { runId = await dbService.saveRun(run); } catch (_) {}
 
-    final gameResult = await gameEngine.processRunPoints(
-      runnerId: uid,
-      sector: result['primarySector'],
-      distKm: result['distanceKm'],
-      dbService: dbService,
-    );
+    final Map<String, dynamic> gameResult = runId == null
+        ? <String, dynamic>{'pointsEarned': 0, 'streak': 0, 'multiplier': 1.0}
+        : await gameEngine.processRun(
+            runId: runId,
+            dbService: dbService,
+          );
 
     if (mounted) {
       Navigator.push(
@@ -972,18 +973,18 @@ class _IdlePanel extends StatelessWidget {
               builder: (_, __) => Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Outer glow ring
+                  // Outer glow ring (subtle — accent, not neon)
                   Container(
-                    width: 120,
-                    height: 120,
+                    width: 116,
+                    height: 116,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
                           color: FortRunTheme.primaryGreen
-                              .withOpacity(glowAnim.value * 0.35),
-                          blurRadius: 40,
-                          spreadRadius: 10,
+                              .withOpacity(glowAnim.value * 0.20),
+                          blurRadius: 22,
+                          spreadRadius: 2,
                         ),
                       ],
                     ),

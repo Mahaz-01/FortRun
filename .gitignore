@@ -4,6 +4,8 @@
 
 # Sensitive keys — NEVER commit
 .env
+env
+doc.txt
 android/app/secrets.properties
 
 # Firebase auto-generated config (contains project IDs)

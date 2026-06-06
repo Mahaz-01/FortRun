@@ -39,29 +39,7 @@ class EnvConfig {
     return val;
   }
 
-  // ── Google API Keys ─────────────────────────────────────────
-
-  /// Google Maps SDK API key (Dart-side usage).
-  static String get googleMapsApiKey {
-    final key = dotenv.env['GOOGLE_MAPS_API_KEY'];
-    if (key == null || key.isEmpty || key == 'your_maps_key_here') {
-      throw Exception(
-        'GOOGLE_MAPS_API_KEY is not set in .env file.\n'
-        'Open .env and replace the placeholder with your real key.',
-      );
-    }
-    return key;
-  }
-
-  /// Google Places API key (restaurant lookups in sabotage feature).
-  static String get googlePlacesApiKey {
-    final key = dotenv.env['GOOGLE_PLACES_API_KEY'];
-    if (key == null || key.isEmpty || key == 'your_places_key_here') {
-      throw Exception(
-        'GOOGLE_PLACES_API_KEY is not set in .env file.\n'
-        'Open .env and replace the placeholder with your real key.',
-      );
-    }
-    return key;
-  }
+  // Google API keys removed — FortRun uses OpenStreetMap (flutter_map +
+  // Overpass), which needs no API key. Restaurant lookups in the sabotage
+  // feature come from RestaurantService via the free Overpass API.
 }
