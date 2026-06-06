@@ -35,7 +35,7 @@ if (flutterVersionName == null) {
 
 android {
     namespace = "com.fortrun.fortrun"
-    compileSdk = 34
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
